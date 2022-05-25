@@ -1,6 +1,7 @@
 package cancel
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -65,8 +66,8 @@ func (sig *Signal) init() {
 }
 
 // Timeout sets a new timeout on the signal.
-// Other cancelation conditions still apply.
-// The first one to reach it`s freshhold will cancel the signal.
+// Other cancellation conditions still apply.
+// The first one to reach it`s threshold will cancel the signal.
 func (sig *Signal) Timeout(d time.Duration) *Signal {
 	go func() {
 		select {
@@ -79,22 +80,15 @@ func (sig *Signal) Timeout(d time.Duration) *Signal {
 }
 
 // Deadline sets a deadline on the given signal.
-// Other cancelation conditions still apply.
-// The first one to reach it`s freshhold will cancel the signal.
+// Other cancellation conditions still apply.
+// The first one to reach it`s threshold will cancel the signal.
 func (sig *Signal) Deadline(t time.Time) *Signal {
-	go func() {
-		select {
-		case <-time.After(time.Until(t)):
-			sig.Cancel()
-		case <-sig.Done():
-		}
-	}()
-	return sig
+	return sig.Timeout(time.Until(t))
 }
 
 // Propagate escalates a cancellation from the parent to the signal.
-// Other cancelation conditions still apply.
-// The first one to reach it`s freshhold will cancel the signal.
+// Other cancellation conditions still apply.
+// The first one to reach it`s threshold will cancel the signal.
 func (sig *Signal) Propagate(parent Context) *Signal {
 	go func() {
 		select {
@@ -104,4 +98,17 @@ func (sig *Signal) Propagate(parent Context) *Signal {
 		}
 	}()
 	return sig
+}
+
+// Promote wraps a simplified context in its standard library equivalent.
+func Promote(ctx Context) (context.Context, func()) {
+	sig, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-ctx.Done():
+			cancel()
+		case <-sig.Done():
+		}
+	}()
+	return sig, cancel
 }
